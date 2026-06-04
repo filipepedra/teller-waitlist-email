@@ -1,21 +1,29 @@
-import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getDb } from "@/lib/db/client";
-import { sentEmails } from "@/lib/db/schema";
-import { dedupeKeyFor, hashEmail, payloadHash, TEMPLATE_ID } from "@/lib/dedupe";
+import { dedupeKeyFor, hashEmail, TEMPLATE_ID } from "@/lib/dedupe";
 import { HMAC_HEADER, parseSecrets, verify } from "@/lib/hmac";
 import { log } from "@/lib/log";
-import { sendWaitlistEmail } from "@/lib/resend";
+import { sendWaitlistEmail } from "@/lib/mailer";
+import {
+  appendEmailSend,
+  appendWaitlistRow,
+  findEmailSendByDedupeKey,
+  updateEmailSend,
+} from "@/lib/sheets";
 
 export const runtime = "nodejs";
+
+function sheetEnabled() {
+  return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON && process.env.WAITLIST_SHEET_ID);
+}
 
 const PayloadSchema = z.object({
   email: z.string().email().max(320),
   name: z.string().max(200).optional().nullable(),
   source: z.string().max(64).optional().nullable(),
   event_id: z.string().max(128).optional().nullable(),
+  append_to_waitlist: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -49,41 +57,72 @@ export async function POST(req: Request) {
 
   const dedupeKey = dedupeKeyFor({ email: parsed.email, event_id: parsed.event_id });
   const emailHash = hashEmail(parsed.email);
-  const db = getDb();
+  const sheetOn = sheetEnabled();
 
-  const inserted = await db
-    .insert(sentEmails)
-    .values({
-      dedupeKey,
-      email: parsed.email,
-      templateId: TEMPLATE_ID,
-      source: parsed.source ?? null,
-      status: "pending",
-      payloadHash: payloadHash(rawBody),
-    })
-    .onConflictDoNothing({ target: sentEmails.dedupeKey })
-    .returning({ id: sentEmails.id });
+  let rowIndex = 0;
+  if (sheetOn) {
+    const existing = await findEmailSendByDedupeKey(dedupeKey);
+    if (existing && existing.row.status === "sent") {
+      log({
+        level: "info",
+        event: "waitlist_email_noop",
+        reason: "already_sent",
+        dedupe_key: dedupeKey,
+        email_hash: emailHash,
+        latency_ms: Date.now() - started,
+      });
+      return NextResponse.json({ status: "noop", reason: "already_sent" }, { status: 200 });
+    }
 
-  if (inserted.length === 0) {
+    if (parsed.append_to_waitlist) {
+      try {
+        await appendWaitlistRow({
+          email: parsed.email,
+          name: parsed.name,
+          source: parsed.source,
+        });
+        log({
+          level: "info",
+          event: "waitlist_row_appended",
+          email_hash: emailHash,
+          source: parsed.source ?? null,
+        });
+      } catch (err) {
+        log({
+          level: "error",
+          event: "waitlist_row_failed",
+          email_hash: emailHash,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return NextResponse.json({ error: "waitlist_append_failed" }, { status: 500 });
+      }
+    }
+
+    rowIndex =
+      existing?.rowIndex ??
+      (await appendEmailSend({
+        dedupe_key: dedupeKey,
+        email_hash: emailHash,
+        template_id: TEMPLATE_ID,
+        status: "pending",
+        source: parsed.source ?? "",
+        created_at: new Date().toISOString(),
+      }));
+  } else {
     log({
-      level: "info",
-      event: "waitlist_email_noop",
-      reason: "already_sent",
-      dedupe_key: dedupeKey,
+      level: "warn",
+      event: "sheet_disabled",
+      detail: "GOOGLE_SERVICE_ACCOUNT_JSON ou WAITLIST_SHEET_ID ausente — pulando Sheet",
       email_hash: emailHash,
-      latency_ms: Date.now() - started,
     });
-    return NextResponse.json({ status: "noop", reason: "already_sent" }, { status: 200 });
   }
 
   const sendResult = await sendWaitlistEmail({ to: parsed.email, name: parsed.name });
-  const insertedId = inserted[0].id;
 
   if (!sendResult.ok) {
-    await db
-      .update(sentEmails)
-      .set({ status: "failed", errorMessage: sendResult.error })
-      .where(eq(sentEmails.id, insertedId));
+    if (sheetOn && rowIndex > 0) {
+      await updateEmailSend(rowIndex, { status: "failed", error: sendResult.error });
+    }
     log({
       level: "error",
       event: "waitlist_email_failed",
@@ -95,17 +134,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "send_failed" }, { status: 500 });
   }
 
-  await db
-    .update(sentEmails)
-    .set({ status: "sent", resendId: sendResult.resendId, sentAt: new Date() })
-    .where(eq(sentEmails.id, insertedId));
+  if (sheetOn && rowIndex > 0) {
+    await updateEmailSend(rowIndex, {
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      message_id: sendResult.messageId,
+    });
+  }
 
   log({
     level: "info",
     event: "waitlist_email_sent",
     dedupe_key: dedupeKey,
     email_hash: emailHash,
-    resend_id: sendResult.resendId,
+    message_id: sendResult.messageId,
     latency_ms: Date.now() - started,
   });
   return NextResponse.json({ status: "sent" }, { status: 200 });
