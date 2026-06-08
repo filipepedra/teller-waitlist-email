@@ -14,6 +14,18 @@ import {
 
 export const runtime = "nodejs";
 
+const DEV = process.env.NODE_ENV === "development";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": DEV ? "*" : (process.env.WAITLIST_ALLOWED_ORIGIN ?? ""),
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Teller-Signature",
+};
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 function sheetEnabled() {
   return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON && process.env.WAITLIST_SHEET_ID);
 }
@@ -33,14 +45,19 @@ export async function POST(req: Request) {
   const secrets = parseSecrets(process.env.WAITLIST_EMAIL_HMAC_SECRET);
   if (secrets.length === 0) {
     log({ level: "error", event: "config_missing", detail: "WAITLIST_EMAIL_HMAC_SECRET unset" });
-    return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
+    return NextResponse.json({ error: "server_misconfigured" }, { status: 500, headers: CORS_HEADERS });
   }
 
   const sig = req.headers.get(HMAC_HEADER);
-  const auth = verify(rawBody, sig, secrets);
-  if (!auth.ok) {
-    log({ level: "warn", event: "hmac_rejected", reason: auth.reason });
-    return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
+  const devBypass = DEV && !sig;
+  if (!devBypass) {
+    const auth = verify(rawBody, sig, secrets);
+    if (!auth.ok) {
+      log({ level: "warn", event: "hmac_rejected", reason: auth.reason });
+      return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
+    }
+  } else {
+    log({ level: "warn", event: "hmac_bypassed", detail: "dev mode — no signature header" });
   }
 
   let parsed: z.infer<typeof PayloadSchema>;
@@ -52,7 +69,7 @@ export async function POST(req: Request) {
       event: "payload_invalid",
       detail: err instanceof Error ? err.message : String(err),
     });
-    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+    return NextResponse.json({ error: "bad_request" }, { status: 400, headers: CORS_HEADERS });
   }
 
   const dedupeKey = dedupeKeyFor({ email: parsed.email, event_id: parsed.event_id });
@@ -71,7 +88,7 @@ export async function POST(req: Request) {
         email_hash: emailHash,
         latency_ms: Date.now() - started,
       });
-      return NextResponse.json({ status: "noop", reason: "already_sent" }, { status: 200 });
+      return NextResponse.json({ status: "noop", reason: "already_sent" }, { status: 200, headers: CORS_HEADERS });
     }
 
     if (parsed.append_to_waitlist) {
@@ -94,7 +111,7 @@ export async function POST(req: Request) {
           email_hash: emailHash,
           error: err instanceof Error ? err.message : String(err),
         });
-        return NextResponse.json({ error: "waitlist_append_failed" }, { status: 500 });
+        return NextResponse.json({ error: "waitlist_append_failed" }, { status: 500, headers: CORS_HEADERS });
       }
     }
 
@@ -131,7 +148,7 @@ export async function POST(req: Request) {
       error: sendResult.error,
       latency_ms: Date.now() - started,
     });
-    return NextResponse.json({ error: "send_failed" }, { status: 500 });
+    return NextResponse.json({ error: "send_failed" }, { status: 500, headers: CORS_HEADERS });
   }
 
   if (sheetOn && rowIndex > 0) {
@@ -150,5 +167,5 @@ export async function POST(req: Request) {
     message_id: sendResult.messageId,
     latency_ms: Date.now() - started,
   });
-  return NextResponse.json({ status: "sent" }, { status: 200 });
+  return NextResponse.json({ status: "sent" }, { status: 200, headers: CORS_HEADERS });
 }
