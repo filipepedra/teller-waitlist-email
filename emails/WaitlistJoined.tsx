@@ -13,7 +13,7 @@ export type WaitlistJoinedProps = {
 };
 
 export const TEMPLATE_ID = "waitlist_joined_v1";
-export const SUBJECT = "Você entrou na waitlist da Teller";
+export const SUBJECT = "Você está na lista";
 
 const styles = {
   body: { backgroundColor: "#ffffff", fontFamily: "system-ui, sans-serif", color: "#111" },
@@ -24,28 +24,30 @@ const styles = {
 } as const;
 
 export default function WaitlistJoined({ name }: WaitlistJoinedProps) {
-  const greeting = name ? `Olá, ${name},` : "Olá,";
+  const greeting = name ? `Olá, ${name}!` : "Olá!";
   return (
     <Html lang="pt-BR">
       <Head />
-      <Preview>Sua inscrição na waitlist da Teller foi recebida.</Preview>
+      <Preview>A Teller tá chegando — e você vai ser um dos primeiros.</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
           <Heading style={styles.heading}>{greeting}</Heading>
           <Text style={styles.text}>
-            Recebemos sua inscrição na waitlist da Teller — obrigado por se juntar.
+            Você tá dentro! Sua vaga na waitlist está reservada — quando o acesso abrir, você
+            recebe um email aqui mesmo. Não precisa fazer nada.
           </Text>
           <Text style={styles.text}>
-            A Teller é um agente de IA pensado pra te ajudar a organizar sua vida financeira no dia
-            a dia. Sem planilha, sem mais um app virando problema.
+            Do outro lado, a gente tá construindo um agente de IA pra tirar o dinheiro da sua
+            cabeça de vez. Sem planilha, sem pular de app em app, sem trabalho manual. Você vai ser
+            um dos primeiros a ter acesso.
           </Text>
           <Text style={styles.text}>
-            Vamos te avisar por aqui assim que houver novidades ou convite de acesso.
+            Qualquer dúvida ou curiosidade antes disso, é só responder este email. A gente lê tudo e responde.
           </Text>
           <Text style={styles.signoff}>
-            Até logo,
+            Até breve,
             <br />
-            Equipe Teller
+            Teller
           </Text>
         </Container>
       </Body>
