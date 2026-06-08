@@ -105,7 +105,7 @@ export default function WaitlistJoined({ name }: WaitlistJoinedProps) {
           <Section style={styles.content}>
             <Heading style={styles.heading}>{greeting}</Heading>
             <Text style={styles.text}>
-              Você tá dentro! Sua vaga na waitlist está reservada — quando o acesso abrir, você
+              Você tá dentro! Sua vaga na waitlist está reservada: quando o acesso abrir, você
               recebe um email aqui mesmo. Não precisa fazer nada.
             </Text>
             <Text style={styles.text}>
@@ -114,7 +114,7 @@ export default function WaitlistJoined({ name }: WaitlistJoinedProps) {
               ser um dos primeiros a ter acesso.
             </Text>
             <Text style={styles.text}>
-              Qualquer dúvida ou curiosidade antes disso, é só responder este email. A gente lê
+              Qualquer dúvida ou curiosidade antes disso, é só responder este email! A gente lê
               tudo e responde.
             </Text>
             <Text style={styles.signoff}>
