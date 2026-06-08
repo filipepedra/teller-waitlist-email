@@ -4,6 +4,7 @@ import {
   Head,
   Heading,
   Html,
+  Img,
   Preview,
   Text,
 } from "@react-email/components";
@@ -18,6 +19,7 @@ export const SUBJECT = "Você está na lista";
 const styles = {
   body: { backgroundColor: "#ffffff", fontFamily: "system-ui, sans-serif", color: "#111" },
   container: { padding: "32px 24px", maxWidth: "560px" },
+  logo: { marginBottom: "24px" },
   heading: { fontSize: "20px", lineHeight: "28px", marginBottom: "16px" },
   text: { fontSize: "16px", lineHeight: "24px", marginBottom: "16px" },
   signoff: { fontSize: "16px", lineHeight: "24px", marginTop: "32px" },
@@ -31,6 +33,13 @@ export default function WaitlistJoined({ name }: WaitlistJoinedProps) {
       <Preview>A Teller tá chegando — e você vai ser um dos primeiros.</Preview>
       <Body style={styles.body}>
         <Container style={styles.container}>
+          <Img
+            src="https://useteller.com.br/assets/teller-app-icon.png"
+            alt="Teller"
+            width={48}
+            height={48}
+            style={styles.logo}
+          />
           <Heading style={styles.heading}>{greeting}</Heading>
           <Text style={styles.text}>
             Você tá dentro! Sua vaga na waitlist está reservada — quando o acesso abrir, você
