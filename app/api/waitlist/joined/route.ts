@@ -42,22 +42,18 @@ export async function POST(req: Request) {
   const started = Date.now();
   const rawBody = await req.text();
 
-  const secrets = parseSecrets(process.env.WAITLIST_EMAIL_HMAC_SECRET);
-  if (secrets.length === 0) {
-    log({ level: "error", event: "config_missing", detail: "WAITLIST_EMAIL_HMAC_SECRET unset" });
-    return NextResponse.json({ error: "server_misconfigured" }, { status: 500, headers: CORS_HEADERS });
-  }
-
   const sig = req.headers.get(HMAC_HEADER);
-  const devBypass = DEV && !sig;
-  if (!devBypass) {
+  if (sig) {
+    const secrets = parseSecrets(process.env.WAITLIST_EMAIL_HMAC_SECRET);
+    if (secrets.length === 0) {
+      log({ level: "error", event: "config_missing", detail: "WAITLIST_EMAIL_HMAC_SECRET unset" });
+      return NextResponse.json({ error: "server_misconfigured" }, { status: 500, headers: CORS_HEADERS });
+    }
     const auth = verify(rawBody, sig, secrets);
     if (!auth.ok) {
       log({ level: "warn", event: "hmac_rejected", reason: auth.reason });
       return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
     }
-  } else {
-    log({ level: "warn", event: "hmac_bypassed", detail: "dev mode — no signature header" });
   }
 
   let parsed: z.infer<typeof PayloadSchema>;
